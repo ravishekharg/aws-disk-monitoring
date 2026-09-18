@@ -1,5 +1,11 @@
 # Architecture
 
+See [`Scalable-Disk-Monitoring-Solution_HLD_v1.0.docx`](Scalable-Disk-Monitoring-Solution_HLD_v1.0.docx)
+for the formal High-Level Design write-up (access management, data collection/aggregation,
+VM discovery & enrollment, scalability, security). Figures 1 and 2 in that document are the
+same architecture pictured below; Figure 2's step numbers match the numbered flow in this
+file exactly.
+
 ```mermaid
 flowchart TB
     subgraph HUB["Automation Account (hub)"]

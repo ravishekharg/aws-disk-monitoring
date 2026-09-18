@@ -8,8 +8,10 @@ alerting, historical retention, a cross-account dashboard), and every other
 piece of the pipeline is Ansible itself.
 
 **Provider chosen: AWS.** See [docs/architecture.md](docs/architecture.md)
-for the full diagram and request/data flow; this README covers the
-"how/why" and how to actually run it.
+for the full diagram and request/data flow, or
+[docs/Scalable-Disk-Monitoring-Solution_HLD_v1.0.docx](docs/Scalable-Disk-Monitoring-Solution_HLD_v1.0.docx)
+for the formal High-Level Design document; this README covers the "how/why"
+and how to actually run it.
 
 ## The problem, restated
 
