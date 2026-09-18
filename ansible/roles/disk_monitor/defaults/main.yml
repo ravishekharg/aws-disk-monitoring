@@ -1,0 +1,24 @@
+---
+# Role-local defaults -- overridable via group_vars/host_vars for
+# environment-specific tuning without touching the role itself.
+cloudwatch_namespace: "CustomDiskMonitoring"
+disk_warning_threshold: 80
+disk_critical_threshold: 90
+excluded_fstypes:
+  - tmpfs
+  - devtmpfs
+  - overlay
+  - squashfs
+  - proc
+  - sysfs
+  - cgroup
+  - cgroup2
+  - autofs
+excluded_mount_prefixes:
+  - /snap
+  - /boot/efi
+  - /run
+
+# Set to false to skip alarm reconciliation on every run (e.g. if alarms
+# are managed separately) and only push metrics.
+manage_alarms: true

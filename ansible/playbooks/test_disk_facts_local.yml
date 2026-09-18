@@ -1,0 +1,22 @@
+---
+# Smoke-tests the fact-collection/threshold-computation logic (the part
+# with real arithmetic/Jinja filters) against localhost, with no AWS calls
+# at all -- useful to verify the role's core logic on any machine before
+# ever touching real cloud credentials.
+#
+#   ansible-playbook -i localhost, -c local playbooks/test_disk_facts_local.yml
+- name: Test disk_monitor's fact-collection logic locally (no AWS calls)
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    aws_account_id: "local-test"
+  tasks:
+    - name: Run only the fact-collection part of the role
+      ansible.builtin.import_role:
+        name: disk_monitor
+        tasks_from: collect_disk_facts.yml
+
+    - name: Show the final computed results
+      ansible.builtin.debug:
+        var: disk_usage_results

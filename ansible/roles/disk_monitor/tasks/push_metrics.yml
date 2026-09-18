@@ -1,0 +1,60 @@
+---
+# Metrics are pushed FROM the control node (delegate_to: localhost), using
+# the AWS credentials already active for this inventory batch (the
+# assumed-role session for this account -- see
+# scripts/generate_account_inventories.py). The managed instance itself
+# never needs its own AWS credentials or an outbound CloudWatch permission;
+# only the control node's assumed role needs cloudwatch:PutMetricData,
+# which keeps the IAM footprint on every fleet VM at zero.
+#
+# Uses the custom cloudwatch_put_metric_data module (library/) -- neither
+# amazon.aws nor community.aws ships a PutMetricData wrapper, only
+# cloudwatch_metric_alarm (which manages alarms against metrics that
+# already exist, a different API call). See that module's docstring.
+
+- name: Publish per-mount disk-used-percent metric
+  cloudwatch_put_metric_data:
+    namespace: "{{ cloudwatch_namespace }}"
+    metric_name: DiskUsedPercent
+    dimensions:
+      Account: "{{ aws_account_id | default('unknown') }}"
+      InstanceId: "{{ ansible_host }}"
+      MountPoint: "{{ item.mount }}"
+    value: "{{ item.used_percent }}"
+    unit: Percent
+  loop: "{{ disk_usage_results }}"
+  loop_control:
+    label: "{{ item.mount }}"
+  delegate_to: localhost
+
+- name: Publish free-space (GB) metric alongside the percentage
+  cloudwatch_put_metric_data:
+    namespace: "{{ cloudwatch_namespace }}"
+    metric_name: DiskFreeGB
+    dimensions:
+      Account: "{{ aws_account_id | default('unknown') }}"
+      InstanceId: "{{ ansible_host }}"
+      MountPoint: "{{ item.mount }}"
+    value: "{{ item.size_available_gb }}"
+    unit: Gigabytes
+  loop: "{{ disk_usage_results }}"
+  loop_control:
+    label: "{{ item.mount }}"
+  delegate_to: localhost
+
+- name: Publish a per-account worst-case summary metric (no per-instance dimension)
+  # A single alarm per account can watch THIS metric to catch "something,
+  # somewhere in this account is nearly full" without needing one alarm per
+  # instance/mount -- CloudWatch alarms are defined against one fully
+  # specified dimension set, so a low-cardinality rollup metric is what
+  # makes account-level alarming scale to hundreds of instances. See
+  # roles/disk_monitor/README.md, "Why a summary metric" for the full
+  # reasoning.
+  cloudwatch_put_metric_data:
+    namespace: "{{ cloudwatch_namespace }}"
+    metric_name: DiskUsedPercentFleetMax
+    dimensions:
+      Account: "{{ aws_account_id | default('unknown') }}"
+    value: "{{ disk_usage_results | map(attribute='used_percent') | max }}"
+    unit: Percent
+  delegate_to: localhost

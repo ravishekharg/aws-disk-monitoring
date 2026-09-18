@@ -1,0 +1,32 @@
+---
+# CloudWatch namespace all disk metrics are published under.
+cloudwatch_namespace: "CustomDiskMonitoring"
+
+# Alert thresholds (percent used). Two levels so on-call can distinguish
+# "watch this" from "act now" in the alarm/notification text.
+disk_warning_threshold: 80
+disk_critical_threshold: 90
+
+# Filesystems/mounts excluded from monitoring -- pseudo/virtual filesystems
+# and container overlay churn would otherwise generate noisy, meaningless
+# metrics (and needlessly inflate CloudWatch custom-metric costs at fleet
+# scale).
+excluded_fstypes:
+  - tmpfs
+  - devtmpfs
+  - overlay
+  - squashfs
+  - proc
+  - sysfs
+  - cgroup
+  - cgroup2
+  - autofs
+
+excluded_mount_prefixes:
+  - /snap
+  - /boot/efi
+  - /run
+
+# SNS topic (created once per account, see docs/architecture.md) that
+# CloudWatch alarms notify.
+sns_topic_arn: "arn:aws:sns:us-east-1:{{ aws_account_id }}:disk-monitoring-alerts"

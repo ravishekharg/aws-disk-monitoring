@@ -1,0 +1,13 @@
+---
+- name: Collect and compute disk usage
+  ansible.builtin.import_tasks: collect_disk_facts.yml
+
+- name: Publish disk usage metrics to CloudWatch
+  ansible.builtin.import_tasks: push_metrics.yml
+  when: disk_usage_results | default([]) | length > 0
+
+- name: Reconcile CloudWatch alarms for this instance
+  ansible.builtin.import_tasks: manage_alarms.yml
+  when:
+    - manage_alarms | bool
+    - disk_usage_results | default([]) | length > 0

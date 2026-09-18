@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: disk_monitor
+  description: >-
+    Collects per-mount disk usage from a managed instance (via Ansible's own
+    fact-gathering, no agent required) and publishes it as CloudWatch custom
+    metrics, with optional alarm reconciliation.
+  author: Solutions Architecture
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9"]
+    - name: Ubuntu
+      versions: ["20.04", "22.04", "24.04"]
+    - name: Amazon
+      versions: ["2", "2023"]
+
+dependencies: []

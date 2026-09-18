@@ -1,0 +1,51 @@
+# Single-account dynamic inventory example using the amazon.aws.aws_ec2
+# plugin. This is the base pattern; for the real multi-account fleet, run
+# scripts/generate_account_inventories.py first -- it emits one file like
+# this per discovered AWS account into inventory/accounts/, each pointed at
+# that account's own assumed-role AWS CLI profile. Ansible natively merges
+# every file in a directory passed to -i, so the multi-account fleet is
+# just "the accounts/ directory", no extra Ansible-side wiring needed.
+plugin: amazon.aws.aws_ec2
+
+# One of the profiles written by generate_account_inventories.py -- each
+# profile is configured (in ~/.aws/config) with role_arn + source_profile
+# so boto3 transparently assumes AnsibleSpokeRole in that account and
+# refreshes the STS session automatically as it expires.
+profile: acct-111111111111
+
+regions:
+  - us-east-1
+  - us-west-2
+
+# Only instances explicitly opted in are monitored -- avoids surprising
+# behavior on ad hoc/short-lived instances that were never meant to be
+# fleet-managed.
+filters:
+  "tag:Monitoring": "disk"
+  instance-state-name: running
+
+# Groups instances by useful dimensions for reporting/targeting.
+keyed_groups:
+  - key: tags.Environment
+    prefix: env
+  - key: tags.Account
+    prefix: account
+  - key: placement.region
+    prefix: region
+
+compose:
+  # aws_ec2 plugin exposes the instance ID as ansible_host by default when
+  # using aws_ssm; being explicit here avoids relying on that default.
+  ansible_host: instance_id
+  ansible_connection: "'community.aws.aws_ssm'"
+  ansible_aws_ssm_region: placement.region
+  # S3 bucket used by the aws_ssm connection plugin to stage files for
+  # transfer to/from the managed instance (SSM Session Manager has no
+  # native SCP-like channel) -- must exist in the *target* account/region
+  # and be writable by AnsibleSpokeRole. See iac/spoke-role/template.yaml.
+  ansible_aws_ssm_bucket_name: "'ansible-ssm-transfer-111111111111-us-east-1'"
+
+cache: true
+cache_plugin: jsonfile
+cache_connection: /tmp/ansible_inventory_cache
+cache_timeout: 300

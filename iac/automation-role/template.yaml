@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  AnsibleAutomationRole -- deployed once, in the central automation/hub
+  account. Whatever runs the Ansible control node (an EC2 instance, an ECS
+  Fargate task, an AWX/AAP execution node) assumes this role, which in turn
+  can assume AnsibleSpokeRole in any member account within the
+  Organization. Scoped via the aws:ResourceOrgID condition key so it
+  automatically covers newly created accounts with zero policy edits.
+
+Parameters:
+  OrganizationId:
+    Type: String
+    Description: "The AWS Organization ID (o-xxxxxxxxxx), used to scope AssumeRole to org member accounts only."
+  TrustedPrincipalArn:
+    Type: String
+    Description: >
+      ARN of the identity allowed to assume this role -- e.g. an EC2
+      instance profile role, an ECS task role, or an AWX/AAP service
+      account's role ARN.
+
+Resources:
+  AnsibleAutomationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AnsibleAutomationRole
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref TrustedPrincipalArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AssumeSpokeRoles
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AssumeAnsibleSpokeRoleAnywhereInOrg
+                Effect: Allow
+                Action: sts:AssumeRole
+                Resource: "arn:aws:iam::*:role/AnsibleSpokeRole"
+                Condition:
+                  # This is the whole "scales automatically" answer for
+                  # access management: a newly created member account gets
+                  # this same OrgID, so it's covered the moment
+                  # AnsibleSpokeRole is deployed into it -- no edit to this
+                  # policy is ever needed.
+                  StringEquals:
+                    "aws:ResourceOrgID": !Ref OrganizationId
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt AnsibleAutomationRole.Arn

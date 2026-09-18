@@ -1,0 +1,15 @@
+---
+# Entry point for the whole fleet. Run against the merged multi-account
+# inventory directory produced by scripts/generate_account_inventories.py:
+#
+#   ansible-playbook -i inventory/accounts/ playbooks/monitor_disk.yml
+#
+# Connects to every host over SSM (community.aws.aws_ssm connection plugin,
+# configured per-account in inventory/accounts/<id>.aws_ec2.yml) -- no SSH
+# keys, no bastion hosts, no inbound ports opened on any managed instance.
+- name: Monitor disk utilization across the fleet
+  hosts: all
+  gather_facts: true
+  strategy: free # independent hosts/accounts; no need to lock-step batches
+  roles:
+    - disk_monitor

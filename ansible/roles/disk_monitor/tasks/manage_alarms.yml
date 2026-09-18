@@ -1,0 +1,64 @@
+---
+# One pair of alarms per ACCOUNT (not per instance/mount) watching the
+# DiskUsedPercentFleetMax rollup metric published in push_metrics.yml --
+# this is what makes alarming scale as VMs are added: adding the 500th
+# instance to an account doesn't create a 500th alarm, it just means one
+# more contributor to a metric an alarm that already exists is watching.
+# run_once + delegate_to: localhost because this only needs to happen once
+# per playbook run per account, not once per host in the batch.
+#
+# Module is amazon.aws.cloudwatch_metric_alarm, not community.aws (moved
+# collections in amazon.aws 5.0.0; community.aws.cloudwatch_metric_alarm no
+# longer exists under that name) -- and `comparison` takes CloudWatch's full
+# enum strings, not a symbolic operator.
+
+- name: Ensure warning-level disk alarm exists for this account
+  amazon.aws.cloudwatch_metric_alarm:
+    state: present
+    name: "disk-usage-warning-{{ aws_account_id | default('unknown') }}"
+    description: >-
+      One or more instances in account {{ aws_account_id | default('unknown') }}
+      have a filesystem at or above {{ disk_warning_threshold }}% used.
+    namespace: "{{ cloudwatch_namespace }}"
+    metric: DiskUsedPercentFleetMax
+    dimensions:
+      Account: "{{ aws_account_id | default('unknown') }}"
+    statistic: Maximum
+    comparison: "GreaterThanOrEqualToThreshold"
+    threshold: "{{ disk_warning_threshold | float }}"
+    period: 300
+    evaluation_periods: 2
+    unit: Percent
+    treat_missing_data: notBreaching
+    alarm_actions:
+      - "{{ sns_topic_arn }}"
+    ok_actions:
+      - "{{ sns_topic_arn }}"
+  delegate_to: localhost
+  run_once: true
+
+- name: Ensure critical-level disk alarm exists for this account
+  amazon.aws.cloudwatch_metric_alarm:
+    state: present
+    name: "disk-usage-critical-{{ aws_account_id | default('unknown') }}"
+    description: >-
+      One or more instances in account {{ aws_account_id | default('unknown') }}
+      have a filesystem at or above {{ disk_critical_threshold }}% used --
+      page on-call.
+    namespace: "{{ cloudwatch_namespace }}"
+    metric: DiskUsedPercentFleetMax
+    dimensions:
+      Account: "{{ aws_account_id | default('unknown') }}"
+    statistic: Maximum
+    comparison: "GreaterThanOrEqualToThreshold"
+    threshold: "{{ disk_critical_threshold | float }}"
+    period: 300
+    evaluation_periods: 1
+    unit: Percent
+    treat_missing_data: notBreaching
+    alarm_actions:
+      - "{{ sns_topic_arn }}"
+    ok_actions:
+      - "{{ sns_topic_arn }}"
+  delegate_to: localhost
+  run_once: true

@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  AnsibleSpokeRole -- deployed via CloudFormation StackSet to every member
+  account in the target Organizational Unit. This is the entire "onboard a
+  new AWS account" story: add the account to the OU, this role appears
+  automatically, no manual IAM work per account. Trusts only the central
+  Automation account's AnsibleAutomationRole.
+
+Parameters:
+  AutomationAccountId:
+    Type: String
+    Description: Account ID of the central hub/automation account.
+  CloudWatchNamespace:
+    Type: String
+    Default: CustomDiskMonitoring
+    Description: Namespace this role is allowed to publish/alarm metrics under.
+
+Resources:
+  AnsibleSpokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AnsibleSpokeRole
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AutomationAccountId}:role/AnsibleAutomationRole"
+            Action: sts:AssumeRole
+            Condition:
+              # Belt-and-suspenders: even if the automation role's own trust
+              # policy were ever loosened, this account will still only
+              # accept assumption requests carrying this specific external
+              # ID, agreed out-of-band with the automation account owner.
+              StringEquals:
+                sts:ExternalId: "ansible-disk-monitoring"
+      Policies:
+        - PolicyName: DiskMonitoringPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Inventory: discover instances to build the dynamic inventory.
+              - Sid: DescribeInstancesForInventory
+                Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeTags
+                Resource: "*"
+
+              # Connectivity: SSM-based command execution, no SSH.
+              - Sid: SessionManagerAccess
+                Effect: Allow
+                Action:
+                  - ssm:DescribeInstanceInformation
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                  - ssm:StartSession
+                  - ssm:TerminateSession
+                  - ssm:ResumeSession
+                Resource: "*"
+
+              # File transfer channel the aws_ssm connection plugin uses
+              # (Session Manager has no native SCP-like channel).
+              - Sid: SsmFileTransferBucket
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::ansible-ssm-transfer-${AWS::AccountId}-*/*"
+
+              # Metrics/alarms, scoped to this project's namespace only --
+              # this role cannot touch any other CloudWatch metric/alarm in
+              # the account.
+              - Sid: PublishDiskMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: !Ref CloudWatchNamespace
+              - Sid: ManageDiskAlarms
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:DeleteAlarms
+                Resource: !Sub "arn:aws:cloudwatch:*:${AWS::AccountId}:alarm:disk-usage-*"
+
+  # Per-account bucket the aws_ssm connection plugin stages file transfers
+  # through -- see inventory/aws_ec2.yml.example's
+  # ansible_aws_ssm_bucket_name.
+  SsmTransferBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ansible-ssm-transfer-${AWS::AccountId}-${AWS::Region}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireTransferArtifacts
+            Status: Enabled
+            ExpirationInDays: 1
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt AnsibleSpokeRole.Arn

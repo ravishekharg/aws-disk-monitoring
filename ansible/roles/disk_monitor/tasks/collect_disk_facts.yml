@@ -1,0 +1,58 @@
+---
+# Uses Ansible's own fact-gathering (ansible_facts.mounts) instead of
+# shelling out to `df` -- it's already structured (device, mount, fstype,
+# size_total, size_available) and gathered by the same setup module every
+# playbook run already pays for, so no extra remote execution or parsing is
+# needed. This is the concrete answer to "how does Ansible collect disk
+# usage": no monitoring agent is installed on the fleet at all.
+
+- name: Ensure mount facts are available
+  ansible.builtin.setup:
+    gather_subset:
+      - mounts
+  when: ansible_facts.mounts is not defined
+
+- name: Build the excluded-mount-prefix regex
+  ansible.builtin.set_fact:
+    _excluded_mount_regex: "^({{ excluded_mount_prefixes | map('regex_escape') | join('|') }})"
+
+- name: Reset the per-run results list
+  ansible.builtin.set_fact:
+    disk_usage_results: []
+
+- name: Compute used-percent for each eligible mount
+  ansible.builtin.set_fact:
+    disk_usage_results: "{{ disk_usage_results + [{
+      'mount': item.mount,
+      'device': item.device,
+      'fstype': item.fstype,
+      'size_total_gb': (item.size_total / 1073741824) | round(2),
+      'size_available_gb': (item.size_available / 1073741824) | round(2),
+      'used_percent': (((item.size_total - item.size_available) / item.size_total) * 100) | round(2),
+      } ] }}"
+  loop: "{{ ansible_facts.mounts }}"
+  loop_control:
+    label: "{{ item.mount }}"
+  when:
+    - item.size_total | int > 0
+    - item.fstype not in excluded_fstypes
+    - not (item.mount is match(_excluded_mount_regex))
+
+- name: Report what was found (visible in playbook output / CI logs)
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}: {{ item.mount }} is {{ item.used_percent }}% used
+      ({{ item.size_available_gb }}GB free of {{ item.size_total_gb }}GB)
+  loop: "{{ disk_usage_results }}"
+  loop_control:
+    label: "{{ item.mount }}"
+
+- name: Flag mounts at or above the critical threshold (visible without CloudWatch)
+  ansible.builtin.debug:
+    msg: >-
+      CRITICAL: {{ inventory_hostname }}:{{ item.mount }} is at {{ item.used_percent }}%
+      (threshold {{ disk_critical_threshold }}%)
+  loop: "{{ disk_usage_results }}"
+  loop_control:
+    label: "{{ item.mount }}"
+  when: item.used_percent | float >= disk_critical_threshold | float
