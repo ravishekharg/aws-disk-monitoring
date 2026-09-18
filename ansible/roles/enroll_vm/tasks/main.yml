@@ -1,0 +1,53 @@
+---
+# Enrollment, concretely: (1) confirm the SSM Agent is actually installed
+# and checking in for this instance, (2) tag it so it becomes visible to
+# the monitoring dynamic inventory (inventory/aws_ec2.yml.example's
+# "tag:Monitoring": "disk" filter) on the next refresh.
+#
+# What this role deliberately does NOT do: install the SSM Agent itself.
+# That's not a missing feature -- it's structurally impossible for Ansible
+# to do over SSM, because the aws_ssm connection plugin *requires* the
+# agent to already be running to connect at all. An instance with no agent
+# is unreachable by this design, by definition (that's the whole point --
+# no SSH fallback exists to bootstrap it another way). The agent's presence
+# is therefore an image/launch-template responsibility (Amazon Linux 2/2023
+# and current Ubuntu/Debian AMIs ship it preinstalled; a custom golden AMI
+# bakes it in at build time), not an Ansible-enrollment-time one. This role
+# verifies that contract held, rather than silently assuming it did.
+#
+# Runs against `localhost` with `instance_id` passed in (e.g. from an
+# EventBridge rule on ec2:RunInstances, or a launch pipeline step) --
+# not against the instance itself, since every action here is an AWS
+# control-plane API call, not something executed on the VM.
+
+- name: Fail fast if instance_id was not provided
+  ansible.builtin.assert:
+    that: instance_id is defined and instance_id | length > 0
+    fail_msg: "enroll_vm requires -e instance_id=i-xxxxxxxx"
+
+- name: Wait for the SSM Agent to register this instance (proves it's actually installed and phoning home)
+  ansible.builtin.command:
+    cmd: >-
+      aws ssm describe-instance-information
+      --filters "Key=InstanceIds,Values={{ instance_id }}"
+      --query "InstanceInformationList[0].PingStatus"
+      --output text
+  register: ssm_ping_status
+  until: ssm_ping_status.stdout == "Online"
+  retries: "{{ ssm_registration_retries }}"
+  delay: "{{ ssm_registration_delay }}"
+  changed_when: false
+
+- name: Apply the monitoring tag so the instance is picked up by the dynamic inventory
+  amazon.aws.ec2_tag:
+    resource: "{{ instance_id }}"
+    tags:
+      "{{ monitoring_tag_key }}": "{{ monitoring_tag_value }}"
+    state: present
+
+- name: Report enrollment success
+  ansible.builtin.debug:
+    msg: >-
+      {{ instance_id }} is registered with SSM (agent confirmed online) and
+      tagged {{ monitoring_tag_key }}={{ monitoring_tag_value }} -- it will
+      appear in the disk-monitoring inventory on the next refresh.

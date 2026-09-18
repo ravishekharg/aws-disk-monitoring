@@ -1,0 +1,15 @@
+---
+# Runs the EXACT SAME disk_monitor role used in production
+# (playbooks/monitor_disk.yml) against localhost-as-the-monitored-host, with
+# AWS_ENDPOINT_URL pointed at a mock AWS endpoint (see demo/run_demo.sh) --
+# this is not a separate/simplified demo path, it is the real role and the
+# real task files, proving the collection -> aggregation -> alarm chain
+# actually executes correctly rather than just parsing.
+- name: Full disk_monitor role run, end to end, against a mock AWS endpoint
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    aws_account_id: "123456789012"
+  roles:
+    - disk_monitor

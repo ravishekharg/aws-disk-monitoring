@@ -1,0 +1,5 @@
+---
+monitoring_tag_key: "Monitoring"
+monitoring_tag_value: "disk"
+ssm_registration_retries: 10
+ssm_registration_delay: 15

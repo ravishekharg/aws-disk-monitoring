@@ -1,0 +1,17 @@
+---
+# Enrolls one newly launched instance for disk monitoring. Intended to be
+# triggered automatically (e.g. an EventBridge rule matching
+# ec2:RunInstances -> a small Lambda or SSM Automation document that calls
+# this playbook with the new instance's ID), not run by hand per instance --
+# that automatic trigger is what makes "VM added -> enrolled" a zero-touch
+# step rather than a manual one.
+#
+#   ansible-playbook -i localhost, -c local playbooks/enroll_vm.yml \
+#       -e instance_id=i-0123456789abcdef0 \
+#       -e aws_profile=acct-111111111111
+- name: Enroll a newly launched EC2 instance for disk monitoring
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - enroll_vm
